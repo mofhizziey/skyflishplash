@@ -13,7 +13,7 @@ import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 
 // Define your API base URL - Update this to your actual Django API URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://logistics-ia1c.onrender.com/api"
 
 export default function OrderManagementPage() {
   const [orders, setOrders] = useState<Order[]>([])

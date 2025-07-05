@@ -8,7 +8,7 @@ import type { Order } from "@/lib/orders"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 // Define your API base URL - Update this to your actual Django API URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://logistics-ia1c.onrender.com/api"
 
 export function TrackPackageSection() {
   const [trackingNumber, setTrackingNumber] = useState("")
