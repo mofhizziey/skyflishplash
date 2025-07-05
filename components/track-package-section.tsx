@@ -18,7 +18,7 @@ export function TrackPackageSection() {
 
   const handleTrack = async () => {
     if (!trackingNumber.trim()) {
-      setMessage("Please enter a tracking number.")
+      setMessage("Please enter a tracking number.....")
       setOrder(null)
       return
     }
