@@ -28,7 +28,6 @@ export default function OrderManagementPage() {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          // Add CORS headers if needed
           Accept: "application/json",
         },
       })
@@ -39,7 +38,10 @@ export default function OrderManagementPage() {
 
       const data: Order[] = await response.json()
       setOrders(data)
-      setFormMessage(null) // Clear any previous error messages
+      // Only clear error messages, not success messages
+      if (formMessage?.type === "error") {
+        setFormMessage(null)
+      }
     } catch (error) {
       console.error("Failed to fetch orders:", error)
       setFormMessage({ type: "error", text: "Failed to load orders. Using offline mode." })
@@ -72,11 +74,16 @@ export default function OrderManagementPage() {
     }
 
     // Basic validation
-    if (!newOrderData.tracking_number || !newOrderData.status) {
+    if (!newOrderData.tracking_number?.trim() || !newOrderData.status?.trim()) {
       setFormMessage({ type: "error", text: "Tracking number and status are required." })
       setIsAdding(false)
       return
     }
+
+    // Clean up empty string values
+    const cleanedData = Object.fromEntries(
+      Object.entries(newOrderData).map(([key, value]) => [key, value?.trim() || null])
+    )
 
     try {
       const response = await fetch(`${API_BASE_URL}/orders/`, {
@@ -87,35 +94,104 @@ export default function OrderManagementPage() {
           // Add Authorization header if your API requires authentication
           // 'Authorization': `Token YOUR_AUTH_TOKEN` or `Bearer YOUR_JWT_TOKEN`
         },
-        body: JSON.stringify(newOrderData),
+        body: JSON.stringify(cleanedData),
       })
 
       if (response.ok) {
-        const createdOrder: Order = await response.json()
+        let createdOrder: Order
+        try {
+          createdOrder = await response.json()
+        } catch (jsonError) {
+          console.warn("Response was successful but couldn't parse JSON:", jsonError)
+          // If we can't parse the response, create a fallback object
+          createdOrder = { 
+            tracking_number: newOrderData.tracking_number,
+            status: newOrderData.status,
+            sender: newOrderData.sender,
+            receiver: newOrderData.receiver,
+            origin: newOrderData.origin,
+            destination: newOrderData.destination,
+            estimated_delivery: newOrderData.estimated_delivery,
+            details: newOrderData.details
+          } as Order
+        }
+        
         setFormMessage({
           type: "success",
           text: `Order ${createdOrder.tracking_number} added successfully!`,
         })
         event.currentTarget.reset() // Clear form
-        fetchOrders() // Refresh the list of orders
+        
+        // Refresh the list of orders after a short delay to show success message
+        setTimeout(() => {
+          fetchOrders()
+        }, 1000)
       } else {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-        console.error("Failed to add order:", errorData)
+        // Handle different HTTP status codes
+        let errorMessage = "Failed to add order"
+        
+        try {
+          const errorData = await response.json()
+          console.error("API Error Response:", errorData)
+          
+          if (response.status === 400) {
+            // Bad request - validation errors
+            if (errorData.tracking_number) {
+              errorMessage = `Tracking number error: ${Array.isArray(errorData.tracking_number) ? errorData.tracking_number.join(', ') : errorData.tracking_number}`
+            } else if (errorData.non_field_errors) {
+              errorMessage = Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(', ') : errorData.non_field_errors
+            } else {
+              errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData)
+            }
+          } else if (response.status === 401) {
+            errorMessage = "Authentication required. Please login."
+          } else if (response.status === 403) {
+            errorMessage = "Permission denied. You don't have access to create orders."
+          } else if (response.status === 409) {
+            errorMessage = "Order with this tracking number already exists."
+          } else if (response.status === 500) {
+            errorMessage = "Server error. Please try again later."
+          } else {
+            errorMessage = errorData.detail || errorData.message || `Server returned ${response.status}`
+          }
+        } catch (parseError) {
+          console.error("Could not parse error response:", parseError)
+          errorMessage = `Server error (${response.status}). Please try again.`
+        }
+        
         setFormMessage({
           type: "error",
-          text: `Failed to add order: ${errorData.error || JSON.stringify(errorData)}`,
+          text: errorMessage,
         })
       }
     } catch (error) {
       console.error("Network error or unexpected issue:", error)
+      let errorMessage = "Network error. Please check if your Django API is running and accessible."
+      
+      if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+        errorMessage = "Cannot connect to the server. Please check if your Django API is running."
+      } else if (error instanceof Error) {
+        errorMessage = `Error: ${error.message}`
+      }
+      
       setFormMessage({
         type: "error",
-        text: "Network error. Please check if your Django API is running and accessible.",
+        text: errorMessage,
       })
     } finally {
       setIsAdding(false)
     }
   }
+
+  // Auto-clear success messages after 5 seconds
+  useEffect(() => {
+    if (formMessage?.type === "success") {
+      const timer = setTimeout(() => {
+        setFormMessage(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [formMessage])
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
@@ -132,11 +208,17 @@ export default function OrderManagementPage() {
             <CardContent>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <div>
-                  <Label htmlFor="trackingNumber">Tracking Number</Label>
-                  <Input id="trackingNumber" name="trackingNumber" required placeholder="e.g., TRK123456" />
+                  <Label htmlFor="trackingNumber">Tracking Number *</Label>
+                  <Input 
+                    id="trackingNumber" 
+                    name="trackingNumber" 
+                    required 
+                    placeholder="e.g., TRK123456"
+                    maxLength={50}
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="status">Status</Label>
+                  <Label htmlFor="status">Status *</Label>
                   <select
                     id="status"
                     name="status"
@@ -154,34 +236,77 @@ export default function OrderManagementPage() {
                 </div>
                 <div>
                   <Label htmlFor="sender">Sender</Label>
-                  <Input id="sender" name="sender" placeholder="e.g., Acme Corp" />
+                  <Input 
+                    id="sender" 
+                    name="sender" 
+                    placeholder="e.g., Acme Corp"
+                    maxLength={100}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="receiver">Receiver</Label>
-                  <Input id="receiver" name="receiver" placeholder="e.g., John Doe" />
+                  <Input 
+                    id="receiver" 
+                    name="receiver" 
+                    placeholder="e.g., John Doe"
+                    maxLength={100}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="origin">Origin</Label>
-                  <Input id="origin" name="origin" placeholder="e.g., New York, USA" />
+                  <Input 
+                    id="origin" 
+                    name="origin" 
+                    placeholder="e.g., New York, USA"
+                    maxLength={100}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="destination">Destination</Label>
-                  <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" />
+                  <Input 
+                    id="destination" 
+                    name="destination" 
+                    placeholder="e.g., Los Angeles, USA"
+                    maxLength={100}
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="estimatedDelivery">Estimated Delivery (YYYY-MM-DD)</Label>
-                  <Input id="estimatedDelivery" name="estimatedDelivery" type="date" />
+                  <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
+                  <Input 
+                    id="estimatedDelivery" 
+                    name="estimatedDelivery" 
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="details">Details</Label>
-                  <Textarea id="details" name="details" rows={3} placeholder="Additional order details..." />
+                  <Textarea 
+                    id="details" 
+                    name="details" 
+                    rows={3} 
+                    placeholder="Additional order details..."
+                    maxLength={500}
+                  />
                 </div>
                 {formMessage && (
-                  <p className={formMessage.type === "success" ? "text-green-500 text-sm" : "text-red-500 text-sm"}>
-                    {formMessage.text}
-                  </p>
+                  <div className={`p-3 rounded-md ${
+                    formMessage.type === "success" 
+                      ? "bg-green-50 border border-green-200" 
+                      : "bg-red-50 border border-red-200"
+                  }`}>
+                    <p className={`text-sm font-medium ${
+                      formMessage.type === "success" ? "text-green-800" : "text-red-800"
+                    }`}>
+                      {formMessage.text}
+                    </p>
+                  </div>
                 )}
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isAdding}>
+                <Button 
+                  type="submit" 
+                  className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400" 
+                  disabled={isAdding}
+                >
                   {isAdding ? "Adding..." : "Add Order"}
                 </Button>
               </form>
@@ -191,35 +316,73 @@ export default function OrderManagementPage() {
           {/* Existing Orders List */}
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl font-bold">Existing Orders</CardTitle>
+              <CardTitle className="text-2xl font-bold">
+                Existing Orders
+                {!isLoadingOrders && orders.length > 0 && (
+                  <span className="text-sm font-normal text-gray-500 ml-2">
+                    ({orders.length} order{orders.length !== 1 ? 's' : ''})
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {isLoadingOrders ? (
-                <p>Loading orders...</p>
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2">Loading orders...</span>
+                </div>
               ) : orders.length === 0 ? (
-                <p>
-                  No orders found.{" "}
-                  {formMessage?.type === "error" ? "Check your API connection." : "Add your first order!"}
-                </p>
+                <div className="text-center py-8 text-gray-500">
+                  <p>No orders found.</p>
+                  <p className="text-sm">
+                    {formMessage?.type === "error" && formMessage.text.includes("Failed to load") 
+                      ? "Check your API connection." 
+                      : "Add your first order using the form!"}
+                  </p>
+                </div>
               ) : (
                 <div className="grid gap-4 max-h-96 overflow-y-auto">
                   {orders.map((order) => (
-                    <Card key={order.tracking_number} className="p-4 border">
-                      <h3 className="font-semibold text-lg">Tracking: {order.tracking_number}</h3>
-                      <p>
-                        Status: <span className="font-medium">{order.status}</span>
+                    <Card key={order.id || order.tracking_number} className="p-4 border hover:shadow-md transition-shadow">
+                      <h3 className="font-semibold text-lg text-blue-600">
+                        Tracking: {order.tracking_number}
+                      </h3>
+                      <p className="mb-1">
+                        Status: 
+                        <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                          order.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+                          order.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
+                          order.status === 'PROCESSING' ? 'bg-yellow-100 text-yellow-800' :
+                          order.status === 'PENDING' ? 'bg-gray-100 text-gray-800' :
+                          order.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                          'bg-orange-100 text-orange-800'
+                        }`}>
+                          {order.status}
+                        </span>
                       </p>
-                      <p>
-                        From: {order.sender} ({order.origin})
-                      </p>
-                      <p>
-                        To: {order.receiver} ({order.destination})
-                      </p>
-                      <p>Est. Delivery: {order.estimated_delivery}</p>
-                      {order.details && <p className="text-sm text-gray-600">Details: {order.details}</p>}
+                      {order.sender && order.origin && (
+                        <p className="text-sm">
+                          <strong>From:</strong> {order.sender} ({order.origin})
+                        </p>
+                      )}
+                      {order.receiver && order.destination && (
+                        <p className="text-sm">
+                          <strong>To:</strong> {order.receiver} ({order.destination})
+                        </p>
+                      )}
+                      {order.estimated_delivery && (
+                        <p className="text-sm">
+                          <strong>Est. Delivery:</strong> {order.estimated_delivery}
+                        </p>
+                      )}
+                      {order.details && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          <strong>Details:</strong> {order.details}
+                        </p>
+                      )}
                       {order.created_at && (
-                        <p className="text-xs text-gray-500">
-                          Created: {new Date(order.created_at).toLocaleDateString()}
+                        <p className="text-xs text-gray-500 mt-2">
+                          Created: {new Date(order.created_at).toLocaleString()}
                         </p>
                       )}
                     </Card>

@@ -41,15 +41,41 @@ export function TrackPackageSection() {
       )
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        if (response.status === 404) {
+          setMessage("Order not found. Please check the tracking number.")
+        } else {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        return
       }
 
       const data: Order[] = await response.json() // DRF list endpoint returns an array
-
-      if (data.length > 0) {
-        // Assuming tracking_number is unique, take the first result
-        setOrder(data[0])
+      console.log("Data: ", data)
+      
+      // Filter the data to ensure we get the exact match for the tracking number
+      const filteredOrders = data.filter(order => 
+        order.tracking_number && 
+        order.tracking_number.toLowerCase() === trackingNumber.trim().toLowerCase()
+      )
+      
+      if (filteredOrders.length > 0) {
+        // Take the first exact match
+        setOrder(filteredOrders[0])
         setMessage("Order details found!")
+      } else if (data.length > 0) {
+        // If we have data but no exact match, show partial match warning
+        const partialMatch = data.find(order => 
+          order.tracking_number && 
+          order.tracking_number.toLowerCase().includes(trackingNumber.trim().toLowerCase())
+        )
+        
+        if (partialMatch) {
+          setOrder(partialMatch)
+          setMessage("Partial match found. Please verify the tracking number.")
+        } else {
+          setOrder(null)
+          setMessage("Order not found. Please check the tracking number.")
+        }
       } else {
         setOrder(null)
         setMessage("Order not found. Please check the tracking number.")
