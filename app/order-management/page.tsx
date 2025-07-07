@@ -1,16 +1,18 @@
 "use client"
 
 import type React from "react"
-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import type { Order } from "@/lib/orders"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { LogOut, Shield } from "lucide-react"
+import { ORDER_STATUSES, getStatusColor } from "@/lib/orders"
 
 // Define your API base URL - Update this to your actual Django API URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://logistics-ia1c.onrender.com/api"
@@ -20,6 +22,37 @@ export default function OrderManagementPage() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [adminEmail, setAdminEmail] = useState("")
+  const router = useRouter()
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = () => {
+      const isAdminLoggedIn = localStorage.getItem("isAdminLoggedIn")
+      const storedAdminEmail = localStorage.getItem("adminEmail")
+
+      if (isAdminLoggedIn === "true" && storedAdminEmail) {
+        setIsAuthenticated(true)
+        setAdminEmail(storedAdminEmail)
+      } else {
+        // Redirect to login if not authenticated
+        router.push("/admin/login")
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  const handleLogout = () => {
+    // Clear authentication data
+    localStorage.removeItem("isAdminLoggedIn")
+    localStorage.removeItem("adminEmail")
+    localStorage.removeItem("adminLoginTime")
+
+    // Redirect to login page
+    router.push("/admin/login")
+  }
 
   const fetchOrders = async () => {
     setIsLoadingOrders(true)
@@ -31,11 +64,9 @@ export default function OrderManagementPage() {
           Accept: "application/json",
         },
       })
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-
       const data: Order[] = await response.json()
       setOrders(data)
       // Only clear error messages, not success messages
@@ -53,8 +84,10 @@ export default function OrderManagementPage() {
   }
 
   useEffect(() => {
-    fetchOrders()
-  }, []) // Fetch orders on initial component mount
+    if (isAuthenticated) {
+      fetchOrders()
+    }
+  }, [isAuthenticated]) // Fetch orders only when authenticated
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -82,7 +115,7 @@ export default function OrderManagementPage() {
 
     // Clean up empty string values
     const cleanedData = Object.fromEntries(
-      Object.entries(newOrderData).map(([key, value]) => [key, value?.trim() || null])
+      Object.entries(newOrderData).map(([key, value]) => [key, value?.trim() || null]),
     )
 
     try {
@@ -104,7 +137,7 @@ export default function OrderManagementPage() {
         } catch (jsonError) {
           console.warn("Response was successful but couldn't parse JSON:", jsonError)
           // If we can't parse the response, create a fallback object
-          createdOrder = { 
+          createdOrder = {
             tracking_number: newOrderData.tracking_number,
             status: newOrderData.status,
             sender: newOrderData.sender,
@@ -112,16 +145,16 @@ export default function OrderManagementPage() {
             origin: newOrderData.origin,
             destination: newOrderData.destination,
             estimated_delivery: newOrderData.estimated_delivery,
-            details: newOrderData.details
+            details: newOrderData.details,
           } as Order
         }
-        
+
         setFormMessage({
           type: "success",
           text: `Order ${createdOrder.tracking_number} added successfully!`,
         })
         event.currentTarget.reset() // Clear form
-        
+
         // Refresh the list of orders after a short delay to show success message
         setTimeout(() => {
           fetchOrders()
@@ -129,17 +162,19 @@ export default function OrderManagementPage() {
       } else {
         // Handle different HTTP status codes
         let errorMessage = "Failed to add order"
-        
+
         try {
           const errorData = await response.json()
           console.error("API Error Response:", errorData)
-          
+
           if (response.status === 400) {
             // Bad request - validation errors
             if (errorData.tracking_number) {
-              errorMessage = `Tracking number error: ${Array.isArray(errorData.tracking_number) ? errorData.tracking_number.join(', ') : errorData.tracking_number}`
+              errorMessage = `Tracking number error: ${Array.isArray(errorData.tracking_number) ? errorData.tracking_number.join(", ") : errorData.tracking_number}`
             } else if (errorData.non_field_errors) {
-              errorMessage = Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(', ') : errorData.non_field_errors
+              errorMessage = Array.isArray(errorData.non_field_errors)
+                ? errorData.non_field_errors.join(", ")
+                : errorData.non_field_errors
             } else {
               errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData)
             }
@@ -158,7 +193,7 @@ export default function OrderManagementPage() {
           console.error("Could not parse error response:", parseError)
           errorMessage = `Server error (${response.status}). Please try again.`
         }
-        
+
         setFormMessage({
           type: "error",
           text: errorMessage,
@@ -167,13 +202,13 @@ export default function OrderManagementPage() {
     } catch (error) {
       console.error("Network error or unexpected issue:", error)
       let errorMessage = "Network error. Please check if your Django API is running and accessible."
-      
+
       if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
         errorMessage = "Cannot connect to the server. Please check if your Django API is running."
       } else if (error instanceof Error) {
         errorMessage = `Error: ${error.message}`
       }
-      
+
       setFormMessage({
         type: "error",
         text: errorMessage,
@@ -193,12 +228,45 @@ export default function OrderManagementPage() {
     }
   }, [formMessage])
 
+  // Show loading or redirect if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p>Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
       <SiteHeader />
+
+      {/* Admin Header */}
+      <div className="bg-blue-600 text-white py-3 px-4">
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            <span className="font-medium">Admin Panel</span>
+            <span className="text-blue-200">•</span>
+            <span className="text-sm text-blue-200">Logged in as: {adminEmail}</span>
+          </div>
+          <Button
+            onClick={handleLogout}
+            variant="outline"
+            size="sm"
+            className="text-blue-600 border-white hover:bg-white hover:text-blue-700 bg-transparent"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
+        </div>
+      </div>
+
       <main className="flex-1 container mx-auto py-8 px-4 md:px-6">
         <h1 className="text-4xl font-bold text-gray-800 mb-8 text-center">Order Management</h1>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Add New Order Form */}
           <Card className="shadow-lg">
@@ -209,10 +277,10 @@ export default function OrderManagementPage() {
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <div>
                   <Label htmlFor="trackingNumber">Tracking Number *</Label>
-                  <Input 
-                    id="trackingNumber" 
-                    name="trackingNumber" 
-                    required 
+                  <Input
+                    id="trackingNumber"
+                    name="trackingNumber"
+                    required
                     placeholder="e.g., TRK123456"
                     maxLength={50}
                   />
@@ -226,85 +294,68 @@ export default function OrderManagementPage() {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">Select Status</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="PROCESSING">Processing</option>
-                    <option value="IN_TRANSIT">In Transit</option>
-                    <option value="DELIVERED">Delivered</option>
-                    <option value="CANCELLED">Cancelled</option>
-                    <option value="EXCEPTION">Exception</option>
+                    {ORDER_STATUSES.map((status) => (
+                      <option key={status.value} value={status.value}>
+                        {status.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <Label htmlFor="sender">Sender</Label>
-                  <Input 
-                    id="sender" 
-                    name="sender" 
-                    placeholder="e.g., Acme Corp"
-                    maxLength={100}
-                  />
+                  <Input id="sender" name="sender" placeholder="e.g., Acme Corp" maxLength={100} />
                 </div>
                 <div>
                   <Label htmlFor="receiver">Receiver</Label>
-                  <Input 
-                    id="receiver" 
-                    name="receiver" 
-                    placeholder="e.g., John Doe"
-                    maxLength={100}
-                  />
+                  <Input id="receiver" name="receiver" placeholder="e.g., John Doe" maxLength={100} />
                 </div>
                 <div>
                   <Label htmlFor="origin">Origin</Label>
-                  <Input 
-                    id="origin" 
-                    name="origin" 
-                    placeholder="e.g., New York, USA"
-                    maxLength={100}
-                  />
+                  <Input id="origin" name="origin" placeholder="e.g., New York, USA" maxLength={100} />
                 </div>
                 <div>
                   <Label htmlFor="destination">Destination</Label>
-                  <Input 
-                    id="destination" 
-                    name="destination" 
-                    placeholder="e.g., Los Angeles, USA"
-                    maxLength={100}
-                  />
+                  <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" maxLength={100} />
                 </div>
                 <div>
                   <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
-                  <Input 
-                    id="estimatedDelivery" 
-                    name="estimatedDelivery" 
+                  <Input
+                    id="estimatedDelivery"
+                    name="estimatedDelivery"
                     type="date"
-                    min={new Date().toISOString().split('T')[0]}
+                    min={new Date().toISOString().split("T")[0]}
                   />
                 </div>
                 <div>
                   <Label htmlFor="details">Details</Label>
-                  <Textarea 
-                    id="details" 
-                    name="details" 
-                    rows={3} 
+                  <Textarea
+                    id="details"
+                    name="details"
+                    rows={3}
                     placeholder="Additional order details..."
                     maxLength={500}
                   />
                 </div>
                 {formMessage && (
-                  <div className={`p-3 rounded-md ${
-                    formMessage.type === "success" 
-                      ? "bg-green-50 border border-green-200" 
-                      : "bg-red-50 border border-red-200"
-                  }`}>
-                    <p className={`text-sm font-medium ${
-                      formMessage.type === "success" ? "text-green-800" : "text-red-800"
-                    }`}>
+                  <div
+                    className={`p-3 rounded-md ${
+                      formMessage.type === "success"
+                        ? "bg-green-50 border border-green-200"
+                        : "bg-red-50 border border-red-200"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-medium ${
+                        formMessage.type === "success" ? "text-green-800" : "text-red-800"
+                      }`}
+                    >
                       {formMessage.text}
                     </p>
                   </div>
                 )}
-                <Button 
-                  type="submit" 
-                  className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400" 
+                <Button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
                   disabled={isAdding}
                 >
                   {isAdding ? "Adding..." : "Add Order"}
@@ -320,7 +371,7 @@ export default function OrderManagementPage() {
                 Existing Orders
                 {!isLoadingOrders && orders.length > 0 && (
                   <span className="text-sm font-normal text-gray-500 ml-2">
-                    ({orders.length} order{orders.length !== 1 ? 's' : ''})
+                    ({orders.length} order{orders.length !== 1 ? "s" : ""})
                   </span>
                 )}
               </CardTitle>
@@ -335,28 +386,24 @@ export default function OrderManagementPage() {
                 <div className="text-center py-8 text-gray-500">
                   <p>No orders found.</p>
                   <p className="text-sm">
-                    {formMessage?.type === "error" && formMessage.text.includes("Failed to load") 
-                      ? "Check your API connection." 
+                    {formMessage?.type === "error" && formMessage.text.includes("Failed to load")
+                      ? "Check your API connection."
                       : "Add your first order using the form!"}
                   </p>
                 </div>
               ) : (
                 <div className="grid gap-4 max-h-96 overflow-y-auto">
                   {orders.map((order) => (
-                    <Card key={order.id || order.tracking_number} className="p-4 border hover:shadow-md transition-shadow">
-                      <h3 className="font-semibold text-lg text-blue-600">
-                        Tracking: {order.tracking_number}
-                      </h3>
+                    <Card
+                      key={order.id || order.tracking_number}
+                      className="p-4 border hover:shadow-md transition-shadow"
+                    >
+                      <h3 className="font-semibold text-lg text-blue-600">Tracking: {order.tracking_number}</h3>
                       <p className="mb-1">
-                        Status: 
-                        <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                          order.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
-                          order.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
-                          order.status === 'PROCESSING' ? 'bg-yellow-100 text-yellow-800' :
-                          order.status === 'PENDING' ? 'bg-gray-100 text-gray-800' :
-                          order.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
-                          'bg-orange-100 text-orange-800'
-                        }`}>
+                        Status:
+                        <span
+                          className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}
+                        >
                           {order.status}
                         </span>
                       </p>
