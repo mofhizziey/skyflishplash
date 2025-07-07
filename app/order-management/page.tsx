@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation"
 import type { Order } from "@/lib/orders"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
-import { LogOut, Shield } from "lucide-react"
+import { LogOut, Shield, Edit, Save, X, Users, Package, Plus } from "lucide-react"
 import { ORDER_STATUSES, getStatusColor } from "@/lib/orders"
 
 // Define your API base URL - Update this to your actual Django API URL
@@ -24,6 +24,14 @@ export default function OrderManagementPage() {
   const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [adminEmail, setAdminEmail] = useState("")
+  const [activeTab, setActiveTab] = useState<"add" | "view" | "names">("add")
+  const [editingOrder, setEditingOrder] = useState<string | null>(null)
+  const [editFormData, setEditFormData] = useState<Partial<Order>>({})
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [uniqueNames, setUniqueNames] = useState<{ senders: string[]; receivers: string[] }>({
+    senders: [],
+    receivers: [],
+  })
   const router = useRouter()
 
   // Check authentication on component mount
@@ -54,6 +62,12 @@ export default function OrderManagementPage() {
     router.push("/admin/login")
   }
 
+  const extractUniqueNames = (orders: Order[]) => {
+    const senders = [...new Set(orders.map((order) => order.sender).filter(Boolean))].sort()
+    const receivers = [...new Set(orders.map((order) => order.receiver).filter(Boolean))].sort()
+    setUniqueNames({ senders, receivers })
+  }
+
   const fetchOrders = async () => {
     setIsLoadingOrders(true)
     try {
@@ -69,6 +83,7 @@ export default function OrderManagementPage() {
       }
       const data: Order[] = await response.json()
       setOrders(data)
+      extractUniqueNames(data)
       // Only clear error messages, not success messages
       if (formMessage?.type === "error") {
         setFormMessage(null)
@@ -124,8 +139,6 @@ export default function OrderManagementPage() {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          // Add Authorization header if your API requires authentication
-          // 'Authorization': `Token YOUR_AUTH_TOKEN` or `Bearer YOUR_JWT_TOKEN`
         },
         body: JSON.stringify(cleanedData),
       })
@@ -136,7 +149,6 @@ export default function OrderManagementPage() {
           createdOrder = await response.json()
         } catch (jsonError) {
           console.warn("Response was successful but couldn't parse JSON:", jsonError)
-          // If we can't parse the response, create a fallback object
           createdOrder = {
             tracking_number: newOrderData.tracking_number,
             status: newOrderData.status,
@@ -153,14 +165,12 @@ export default function OrderManagementPage() {
           type: "success",
           text: `Order ${createdOrder.tracking_number} added successfully!`,
         })
-        event.currentTarget.reset() // Clear form
+        event.currentTarget.reset()
 
-        // Refresh the list of orders after a short delay to show success message
         setTimeout(() => {
           fetchOrders()
         }, 1000)
       } else {
-        // Handle different HTTP status codes
         let errorMessage = "Failed to add order"
 
         try {
@@ -168,7 +178,6 @@ export default function OrderManagementPage() {
           console.error("API Error Response:", errorData)
 
           if (response.status === 400) {
-            // Bad request - validation errors
             if (errorData.tracking_number) {
               errorMessage = `Tracking number error: ${Array.isArray(errorData.tracking_number) ? errorData.tracking_number.join(", ") : errorData.tracking_number}`
             } else if (errorData.non_field_errors) {
@@ -215,6 +224,78 @@ export default function OrderManagementPage() {
       })
     } finally {
       setIsAdding(false)
+    }
+  }
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order.tracking_number)
+    setEditFormData({
+      tracking_number: order.tracking_number,
+      status: order.status,
+      sender: order.sender,
+      receiver: order.receiver,
+      origin: order.origin,
+      destination: order.destination,
+      estimated_delivery: order.estimated_delivery,
+      details: order.details,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingOrder(null)
+    setEditFormData({})
+  }
+
+  const handleUpdateOrder = async (trackingNumber: string) => {
+    setIsUpdating(true)
+    setFormMessage(null)
+
+    try {
+      // Find the order to get its URL or ID for the API call
+      const orderToUpdate = orders.find((order) => order.tracking_number === trackingNumber)
+      if (!orderToUpdate) {
+        throw new Error("Order not found")
+      }
+
+      // Use the order's URL if available, otherwise construct the endpoint
+      const updateUrl = orderToUpdate.url || `${API_BASE_URL}/orders/${trackingNumber}/`
+
+      const response = await fetch(updateUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(editFormData),
+      })
+
+      if (response.ok) {
+        const updatedOrder = await response.json()
+        setFormMessage({
+          type: "success",
+          text: `Order ${updatedOrder.tracking_number} updated successfully!`,
+        })
+        setEditingOrder(null)
+        setEditFormData({})
+
+        setTimeout(() => {
+          fetchOrders()
+        }, 1000)
+      } else {
+        const errorData = await response.json()
+        setFormMessage({
+          type: "error",
+          text: errorData.detail || errorData.message || "Failed to update order",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to update order:", error)
+      setFormMessage({
+        type: "error",
+        text: "Failed to update order. Please try again.",
+      })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -267,108 +348,142 @@ export default function OrderManagementPage() {
 
       <main className="flex-1 container mx-auto py-8 px-4 md:px-6">
         <h1 className="text-4xl font-bold text-gray-800 mb-8 text-center">Order Management</h1>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Add New Order Form */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold">Add New Order</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="grid gap-4">
-                <div>
-                  <Label htmlFor="trackingNumber">Tracking Number *</Label>
-                  <Input
-                    id="trackingNumber"
-                    name="trackingNumber"
-                    required
-                    placeholder="e.g., TRK123456"
-                    maxLength={50}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="status">Status *</Label>
-                  <select
-                    id="status"
-                    name="status"
-                    required
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="">Select Status</option>
-                    {ORDER_STATUSES.map((status) => (
-                      <option key={status.value} value={status.value}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="sender">Sender</Label>
-                  <Input id="sender" name="sender" placeholder="e.g., Acme Corp" maxLength={100} />
-                </div>
-                <div>
-                  <Label htmlFor="receiver">Receiver</Label>
-                  <Input id="receiver" name="receiver" placeholder="e.g., John Doe" maxLength={100} />
-                </div>
-                <div>
-                  <Label htmlFor="origin">Origin</Label>
-                  <Input id="origin" name="origin" placeholder="e.g., New York, USA" maxLength={100} />
-                </div>
-                <div>
-                  <Label htmlFor="destination">Destination</Label>
-                  <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" maxLength={100} />
-                </div>
-                <div>
-                  <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
-                  <Input
-                    id="estimatedDelivery"
-                    name="estimatedDelivery"
-                    type="date"
-                    min={new Date().toISOString().split("T")[0]}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="details">Details</Label>
-                  <Textarea
-                    id="details"
-                    name="details"
-                    rows={3}
-                    placeholder="Additional order details..."
-                    maxLength={500}
-                  />
-                </div>
-                {formMessage && (
-                  <div
-                    className={`p-3 rounded-md ${
-                      formMessage.type === "success"
-                        ? "bg-green-50 border border-green-200"
-                        : "bg-red-50 border border-red-200"
-                    }`}
-                  >
-                    <p
-                      className={`text-sm font-medium ${
-                        formMessage.type === "success" ? "text-green-800" : "text-red-800"
-                      }`}
-                    >
-                      {formMessage.text}
-                    </p>
-                  </div>
-                )}
-                <Button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
-                  disabled={isAdding}
-                >
-                  {isAdding ? "Adding..." : "Add Order"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
 
-          {/* Existing Orders List */}
+        {/* Tab Navigation */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-lg p-1 shadow-md">
+            <button
+              onClick={() => setActiveTab("add")}
+              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
+                activeTab === "add" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              Add Order
+            </button>
+            <button
+              onClick={() => setActiveTab("view")}
+              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
+                activeTab === "view" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              View All Orders
+            </button>
+            <button
+              onClick={() => setActiveTab("names")}
+              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
+                activeTab === "names" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              View All Names
+            </button>
+          </div>
+        </div>
+
+        {/* Global Messages */}
+        {formMessage && (
+          <div
+            className={`mb-6 p-3 rounded-md ${
+              formMessage.type === "success" ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
+            }`}
+          >
+            <p className={`text-sm font-medium ${formMessage.type === "success" ? "text-green-800" : "text-red-800"}`}>
+              {formMessage.text}
+            </p>
+          </div>
+        )}
+
+        {/* Add Order Tab */}
+        {activeTab === "add" && (
+          <div className="max-w-2xl mx-auto">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold">Add New Order</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="grid gap-4">
+                  <div>
+                    <Label htmlFor="trackingNumber">Tracking Number *</Label>
+                    <Input
+                      id="trackingNumber"
+                      name="trackingNumber"
+                      required
+                      placeholder="e.g., TRK123456"
+                      maxLength={50}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="status">Status *</Label>
+                    <select
+                      id="status"
+                      name="status"
+                      required
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Select Status</option>
+                      {ORDER_STATUSES.map((status) => (
+                        <option key={status.value} value={status.value}>
+                          {status.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="sender">Sender</Label>
+                    <Input id="sender" name="sender" placeholder="e.g., Acme Corp" maxLength={100} />
+                  </div>
+                  <div>
+                    <Label htmlFor="receiver">Receiver</Label>
+                    <Input id="receiver" name="receiver" placeholder="e.g., John Doe" maxLength={100} />
+                  </div>
+                  <div>
+                    <Label htmlFor="origin">Origin</Label>
+                    <Input id="origin" name="origin" placeholder="e.g., New York, USA" maxLength={100} />
+                  </div>
+                  <div>
+                    <Label htmlFor="destination">Destination</Label>
+                    <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" maxLength={100} />
+                  </div>
+                  <div>
+                    <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
+                    <Input
+                      id="estimatedDelivery"
+                      name="estimatedDelivery"
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="details">Details</Label>
+                    <Textarea
+                      id="details"
+                      name="details"
+                      rows={3}
+                      placeholder="Additional order details..."
+                      maxLength={500}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
+                    disabled={isAdding}
+                  >
+                    {isAdding ? "Adding..." : "Add Order"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* View All Orders Tab */}
+        {activeTab === "view" && (
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="text-2xl font-bold">
-                Existing Orders
+                All Orders
                 {!isLoadingOrders && orders.length > 0 && (
                   <span className="text-sm font-normal text-gray-500 ml-2">
                     ({orders.length} order{orders.length !== 1 ? "s" : ""})
@@ -385,52 +500,152 @@ export default function OrderManagementPage() {
               ) : orders.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <p>No orders found.</p>
-                  <p className="text-sm">
-                    {formMessage?.type === "error" && formMessage.text.includes("Failed to load")
-                      ? "Check your API connection."
-                      : "Add your first order using the form!"}
-                  </p>
+                  <p className="text-sm">Add your first order using the Add Order tab!</p>
                 </div>
               ) : (
                 <div className="grid gap-4 max-h-96 overflow-y-auto">
                   {orders.map((order) => (
-                    <Card
-                      key={order.id || order.tracking_number}
-                      className="p-4 border hover:shadow-md transition-shadow"
-                    >
-                      <h3 className="font-semibold text-lg text-blue-600">Tracking: {order.tracking_number}</h3>
-                      <p className="mb-1">
-                        Status:
-                        <span
-                          className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}
-                        >
-                          {order.status}
-                        </span>
-                      </p>
-                      {order.sender && order.origin && (
-                        <p className="text-sm">
-                          <strong>From:</strong> {order.sender} ({order.origin})
-                        </p>
-                      )}
-                      {order.receiver && order.destination && (
-                        <p className="text-sm">
-                          <strong>To:</strong> {order.receiver} ({order.destination})
-                        </p>
-                      )}
-                      {order.estimated_delivery && (
-                        <p className="text-sm">
-                          <strong>Est. Delivery:</strong> {order.estimated_delivery}
-                        </p>
-                      )}
-                      {order.details && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          <strong>Details:</strong> {order.details}
-                        </p>
-                      )}
-                      {order.created_at && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          Created: {new Date(order.created_at).toLocaleString()}
-                        </p>
+                    <Card key={order.tracking_number} className="p-4 border hover:shadow-md transition-shadow">
+                      {editingOrder === order.tracking_number ? (
+                        // Edit Mode
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-lg text-blue-600">Editing: {order.tracking_number}</h3>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleUpdateOrder(order.tracking_number)}
+                                disabled={isUpdating}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <Save className="w-4 h-4 mr-1" />
+                                {isUpdating ? "Saving..." : "Save"}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={handleCancelEdit} disabled={isUpdating}>
+                                <X className="w-4 h-4 mr-1" />
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Status</Label>
+                              <select
+                                value={editFormData.status || ""}
+                                onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                              >
+                                {ORDER_STATUSES.map((status) => (
+                                  <option key={status.value} value={status.value}>
+                                    {status.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <Label>Sender</Label>
+                              <Input
+                                value={editFormData.sender || ""}
+                                onChange={(e) => setEditFormData({ ...editFormData, sender: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Receiver</Label>
+                              <Input
+                                value={editFormData.receiver || ""}
+                                onChange={(e) => setEditFormData({ ...editFormData, receiver: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Origin</Label>
+                              <Input
+                                value={editFormData.origin || ""}
+                                onChange={(e) => setEditFormData({ ...editFormData, origin: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Destination</Label>
+                              <Input
+                                value={editFormData.destination || ""}
+                                onChange={(e) => setEditFormData({ ...editFormData, destination: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Estimated Delivery</Label>
+                              <Input
+                                type="date"
+                                value={editFormData.estimated_delivery || ""}
+                                onChange={(e) =>
+                                  setEditFormData({ ...editFormData, estimated_delivery: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label>Details</Label>
+                            <Textarea
+                              value={editFormData.details || ""}
+                              onChange={(e) => setEditFormData({ ...editFormData, details: e.target.value })}
+                              rows={3}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        // View Mode
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold text-lg text-blue-600">Tracking: {order.tracking_number}</h3>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditOrder(order)}
+                              className="flex items-center gap-1"
+                            >
+                              <Edit className="w-4 h-4" />
+                              Edit
+                            </Button>
+                          </div>
+
+                          <p className="mb-1">
+                            Status:
+                            <span
+                              className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}
+                            >
+                              {order.status}
+                            </span>
+                          </p>
+
+                          {order.sender && order.origin && (
+                            <p className="text-sm">
+                              <strong>From:</strong> {order.sender} ({order.origin})
+                            </p>
+                          )}
+
+                          {order.receiver && order.destination && (
+                            <p className="text-sm">
+                              <strong>To:</strong> {order.receiver} ({order.destination})
+                            </p>
+                          )}
+
+                          {order.estimated_delivery && (
+                            <p className="text-sm">
+                              <strong>Est. Delivery:</strong> {order.estimated_delivery}
+                            </p>
+                          )}
+
+                          {order.details && (
+                            <p className="text-sm text-gray-600 mt-2">
+                              <strong>Details:</strong> {order.details}
+                            </p>
+                          )}
+
+                          {order.created_at && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              Created: {new Date(order.created_at).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </Card>
                   ))}
@@ -438,7 +653,58 @@ export default function OrderManagementPage() {
               )}
             </CardContent>
           </Card>
-        </div>
+        )}
+
+        {/* View All Names Tab */}
+        {activeTab === "names" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-green-600">
+                  All Senders ({uniqueNames.senders.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {uniqueNames.senders.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No senders found</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto">
+                    <ul className="space-y-2">
+                      {uniqueNames.senders.map((sender, index) => (
+                        <li key={index} className="p-2 bg-gray-50 rounded border">
+                          {sender}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-blue-600">
+                  All Receivers ({uniqueNames.receivers.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {uniqueNames.receivers.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No receivers found</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto">
+                    <ul className="space-y-2">
+                      {uniqueNames.receivers.map((receiver, index) => (
+                        <li key={index} className="p-2 bg-gray-50 rounded border">
+                          {receiver}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </main>
       <SiteFooter />
     </div>
