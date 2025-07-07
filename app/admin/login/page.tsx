@@ -47,7 +47,7 @@ export default function AdminLoginPage() {
       localStorage.setItem("adminLoginTime", new Date().toISOString())
 
       // Redirect to order management page
-      router.push("/admin/order-management")
+      router.push("/order-management")
     } else {
       setError("Invalid email or password. Please try again.")
     }
