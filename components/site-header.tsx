@@ -30,9 +30,7 @@ export function SiteHeader() {
           <Link href="#contact" className="text-gray-600 hover:text-gray-900">
             Contact
           </Link>
-          <Link href="/order-management" className="text-gray-600 hover:text-gray-900 flex items-center gap-1">
-            <Settings className="h-4 w-4" /> Order Management
-          </Link>
+      
         </nav>
         <Button asChild className="hidden md:flex bg-blue-600 hover:bg-blue-700 text-white">
           <Link href="/track">
