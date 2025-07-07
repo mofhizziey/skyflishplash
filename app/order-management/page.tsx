@@ -8,20 +8,153 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { Order } from "@/lib/orders"
-import { SiteHeader } from "@/components/site-header"
-import { SiteFooter } from "@/components/site-footer"
-import { LogOut, Shield, Edit, Save, X, Users, Package, Plus } from "lucide-react"
-import { ORDER_STATUSES, getStatusColor } from "@/lib/orders"
+import { LogOut, Shield, Edit, Save, X, Users, Package, Plus, CheckCircle, XCircle } from "lucide-react"
 
 // Define your API base URL - Update this to your actual Django API URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://logistics-ia1c.onrender.com/api"
+
+// Order type definition
+type Order = {
+  url?: string
+  tracking_number: string
+  status: string
+  sender: string
+  receiver: string
+  origin: string
+  destination: string
+  estimated_delivery: string
+  details?: string
+  created_at?: string
+  updated_at?: string
+}
+
+// Order statuses
+const ORDER_STATUSES = [
+  { value: "PENDING", label: "Pending", color: "bg-gray-100 text-gray-800" },
+  { value: "PROCESSING", label: "Processing", color: "bg-yellow-100 text-yellow-800" },
+  { value: "IN_TRANSIT", label: "In Transit", color: "bg-blue-100 text-blue-800" },
+  { value: "DELIVERED", label: "Delivered", color: "bg-green-100 text-green-800" },
+  { value: "CANCELLED", label: "Cancelled", color: "bg-red-100 text-red-800" },
+  { value: "EXCEPTION", label: "Exception", color: "bg-orange-100 text-orange-800" },
+]
+
+// Get status color function
+const getStatusColor = (status: string): string => {
+  const statusConfig = ORDER_STATUSES.find((s) => s.value === status)
+  return statusConfig?.color || "bg-gray-100 text-gray-800"
+}
+
+// Toast interface
+interface Toast {
+  id: string
+  type: "success" | "error"
+  title: string
+  description: string
+}
+
+// Site Header Component
+const SiteHeader = () => (
+  <header className="bg-white shadow-sm border-b">
+    <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="flex items-center space-x-2">
+        <Package className="h-6 w-6 text-blue-600" />
+        <span className="text-xl font-bold text-gray-900">Logistics System</span>
+      </div>
+      <nav className="hidden sm:flex items-center space-x-6">
+        <a href="/" className="text-gray-600 hover:text-gray-900">
+          Home
+        </a>
+        <a href="/track" className="text-gray-600 hover:text-gray-900">
+          Track Order
+        </a>
+        <a href="/admin/login" className="text-gray-600 hover:text-gray-900">
+          Admin
+        </a>
+      </nav>
+    </div>
+  </header>
+)
+
+// Site Footer Component
+const SiteFooter = () => (
+  <footer className="bg-gray-800 text-white py-8">
+    <div className="container mx-auto px-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Logistics System</h3>
+          <p className="text-gray-300">Professional order management and tracking system for your business needs.</p>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
+          <ul className="space-y-2 text-gray-300">
+            <li>
+              <a href="/" className="hover:text-white">
+                Home
+              </a>
+            </li>
+            <li>
+              <a href="/track" className="hover:text-white">
+                Track Order
+              </a>
+            </li>
+            <li>
+              <a href="/admin/login" className="hover:text-white">
+                Admin Login
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Contact</h3>
+          <p className="text-gray-300">Email: info@skyshipsplash.com</p>
+          <p className="text-gray-300">Support available 24/7</p>
+        </div>
+      </div>
+      <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-300">
+        <p>&copy; 2024 Logistics System. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+)
+
+// Toast Component
+const ToastContainer = ({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) => (
+  <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
+    {toasts.map((toast) => (
+      <div
+        key={toast.id}
+        className={`transform transition-all duration-300 ease-in-out ${
+          toast.type === "success"
+            ? "bg-green-50 border border-green-200 text-green-800"
+            : "bg-red-50 border border-red-200 text-red-800"
+        } rounded-lg shadow-lg p-4 flex items-start space-x-3`}
+      >
+        <div className="flex-shrink-0">
+          {toast.type === "success" ? (
+            <CheckCircle className="h-5 w-5 text-green-600" />
+          ) : (
+            <XCircle className="h-5 w-5 text-red-600" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold">{toast.title}</p>
+          <p className="text-sm opacity-90 mt-1">{toast.description}</p>
+        </div>
+        <button
+          onClick={() => removeToast(toast.id)}
+          className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    ))}
+  </div>
+)
 
 export default function OrderManagementPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
-  const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [adminEmail, setAdminEmail] = useState("")
   const [activeTab, setActiveTab] = useState<"add" | "view" | "names">("add")
@@ -32,7 +165,24 @@ export default function OrderManagementPage() {
     senders: [],
     receivers: [],
   })
+  const [toasts, setToasts] = useState<Toast[]>([])
   const router = useRouter()
+
+  // Toast functions
+  const addToast = (type: "success" | "error", title: string, description: string) => {
+    const id = Date.now().toString()
+    const newToast: Toast = { id, type, title, description }
+    setToasts((prev) => [...prev, newToast])
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      removeToast(id)
+    }, 5000)
+  }
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
+  }
 
   // Check authentication on component mount
   useEffect(() => {
@@ -44,7 +194,6 @@ export default function OrderManagementPage() {
         setIsAuthenticated(true)
         setAdminEmail(storedAdminEmail)
       } else {
-        // Redirect to login if not authenticated
         router.push("/admin/login")
       }
     }
@@ -53,12 +202,9 @@ export default function OrderManagementPage() {
   }, [router])
 
   const handleLogout = () => {
-    // Clear authentication data
     localStorage.removeItem("isAdminLoggedIn")
     localStorage.removeItem("adminEmail")
     localStorage.removeItem("adminLoginTime")
-
-    // Redirect to login page
     router.push("/admin/login")
   }
 
@@ -84,14 +230,9 @@ export default function OrderManagementPage() {
       const data: Order[] = await response.json()
       setOrders(data)
       extractUniqueNames(data)
-      // Only clear error messages, not success messages
-      if (formMessage?.type === "error") {
-        setFormMessage(null)
-      }
     } catch (error) {
       console.error("Failed to fetch orders:", error)
-      setFormMessage({ type: "error", text: "Failed to load orders. Using offline mode." })
-      // Set empty array as fallback
+      addToast("error", "Error Loading Orders", "Failed to load orders. Please check your connection and try again.")
       setOrders([])
     } finally {
       setIsLoadingOrders(false)
@@ -102,12 +243,11 @@ export default function OrderManagementPage() {
     if (isAuthenticated) {
       fetchOrders()
     }
-  }, [isAuthenticated]) // Fetch orders only when authenticated
+  }, [isAuthenticated])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsAdding(true)
-    setFormMessage(null)
 
     const formData = new FormData(event.currentTarget)
     const newOrderData = {
@@ -121,14 +261,12 @@ export default function OrderManagementPage() {
       details: formData.get("details") as string,
     }
 
-    // Basic validation
     if (!newOrderData.tracking_number?.trim() || !newOrderData.status?.trim()) {
-      setFormMessage({ type: "error", text: "Tracking number and status are required." })
+      addToast("error", "Validation Error", "Tracking number and status are required.")
       setIsAdding(false)
       return
     }
 
-    // Clean up empty string values
     const cleanedData = Object.fromEntries(
       Object.entries(newOrderData).map(([key, value]) => [key, value?.trim() || null]),
     )
@@ -146,30 +284,42 @@ export default function OrderManagementPage() {
       if (response.ok) {
         let createdOrder: Order
         try {
-          createdOrder = await response.json()
+          const responseText = await response.text()
+          if (responseText) {
+            createdOrder = JSON.parse(responseText)
+          } else {
+            createdOrder = {
+              tracking_number: newOrderData.tracking_number,
+              status: newOrderData.status,
+              sender: newOrderData.sender || "",
+              receiver: newOrderData.receiver || "",
+              origin: newOrderData.origin || "",
+              destination: newOrderData.destination || "",
+              estimated_delivery: newOrderData.estimated_delivery || "",
+              details: newOrderData.details || "",
+            } as Order
+          }
         } catch (jsonError) {
           console.warn("Response was successful but couldn't parse JSON:", jsonError)
           createdOrder = {
             tracking_number: newOrderData.tracking_number,
             status: newOrderData.status,
-            sender: newOrderData.sender,
-            receiver: newOrderData.receiver,
-            origin: newOrderData.origin,
-            destination: newOrderData.destination,
-            estimated_delivery: newOrderData.estimated_delivery,
-            details: newOrderData.details,
+            sender: newOrderData.sender || "",
+            receiver: newOrderData.receiver || "",
+            origin: newOrderData.origin || "",
+            destination: newOrderData.destination || "",
+            estimated_delivery: newOrderData.estimated_delivery || "",
+            details: newOrderData.details || "",
           } as Order
         }
 
-        setFormMessage({
-          type: "success",
-          text: `Order ${createdOrder.tracking_number} added successfully!`,
-        })
+        addToast(
+          "success",
+          "Order Created Successfully!",
+          `Order ${createdOrder.tracking_number} has been added to the system.`,
+        )
         event.currentTarget.reset()
-
-        setTimeout(() => {
-          fetchOrders()
-        }, 1000)
+        fetchOrders()
       } else {
         let errorMessage = "Failed to add order"
 
@@ -203,10 +353,7 @@ export default function OrderManagementPage() {
           errorMessage = `Server error (${response.status}). Please try again.`
         }
 
-        setFormMessage({
-          type: "error",
-          text: errorMessage,
-        })
+        addToast("error", "Failed to Create Order", errorMessage)
       }
     } catch (error) {
       console.error("Network error or unexpected issue:", error)
@@ -218,10 +365,7 @@ export default function OrderManagementPage() {
         errorMessage = `Error: ${error.message}`
       }
 
-      setFormMessage({
-        type: "error",
-        text: errorMessage,
-      })
+      addToast("error", "Network Error", errorMessage)
     } finally {
       setIsAdding(false)
     }
@@ -248,16 +392,13 @@ export default function OrderManagementPage() {
 
   const handleUpdateOrder = async (trackingNumber: string) => {
     setIsUpdating(true)
-    setFormMessage(null)
 
     try {
-      // Find the order to get its URL or ID for the API call
       const orderToUpdate = orders.find((order) => order.tracking_number === trackingNumber)
       if (!orderToUpdate) {
         throw new Error("Order not found")
       }
 
-      // Use the order's URL if available, otherwise construct the endpoint
       const updateUrl = orderToUpdate.url || `${API_BASE_URL}/orders/${trackingNumber}/`
 
       const response = await fetch(updateUrl, {
@@ -271,45 +412,22 @@ export default function OrderManagementPage() {
 
       if (response.ok) {
         const updatedOrder = await response.json()
-        setFormMessage({
-          type: "success",
-          text: `Order ${updatedOrder.tracking_number} updated successfully!`,
-        })
+        addToast("success", "Order Updated Successfully!", `Order ${updatedOrder.tracking_number} has been updated.`)
         setEditingOrder(null)
         setEditFormData({})
-
-        setTimeout(() => {
-          fetchOrders()
-        }, 1000)
+        fetchOrders()
       } else {
         const errorData = await response.json()
-        setFormMessage({
-          type: "error",
-          text: errorData.detail || errorData.message || "Failed to update order",
-        })
+        addToast("error", "Failed to Update Order", errorData.detail || errorData.message || "Failed to update order")
       }
     } catch (error) {
       console.error("Failed to update order:", error)
-      setFormMessage({
-        type: "error",
-        text: "Failed to update order. Please try again.",
-      })
+      addToast("error", "Update Error", "Failed to update order. Please try again.")
     } finally {
       setIsUpdating(false)
     }
   }
 
-  // Auto-clear success messages after 5 seconds
-  useEffect(() => {
-    if (formMessage?.type === "success") {
-      const timer = setTimeout(() => {
-        setFormMessage(null)
-      }, 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [formMessage])
-
-  // Show loading or redirect if not authenticated
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -325,20 +443,23 @@ export default function OrderManagementPage() {
     <div className="flex flex-col min-h-screen bg-gray-100">
       <SiteHeader />
 
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+
       {/* Admin Header */}
       <div className="bg-blue-600 text-white py-3 px-4">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="container mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Shield className="w-5 h-5" />
             <span className="font-medium">Admin Panel</span>
-            <span className="text-blue-200">•</span>
+            <span className="text-blue-200 hidden sm:inline">•</span>
             <span className="text-sm text-blue-200">Logged in as: {adminEmail}</span>
           </div>
           <Button
             onClick={handleLogout}
             variant="outline"
             size="sm"
-            className="text-blue-600 border-white hover:bg-white hover:text-blue-700 bg-transparent"
+            className="text-blue-600 border-white bg-white hover:text-blue-700 self-start sm:self-auto"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Logout
@@ -346,128 +467,124 @@ export default function OrderManagementPage() {
         </div>
       </div>
 
-      <main className="flex-1 container mx-auto py-8 px-4 md:px-6">
-        <h1 className="text-4xl font-bold text-gray-800 mb-8 text-center">Order Management</h1>
+      <main className="flex-1 container mx-auto py-4 sm:py-8 px-4 md:px-6">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-6 sm:mb-8 text-center">
+          Order Management
+        </h1>
 
         {/* Tab Navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-lg p-1 shadow-md">
-            <button
-              onClick={() => setActiveTab("add")}
-              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
-                activeTab === "add" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <Plus className="w-4 h-4" />
-              Add Order
-            </button>
-            <button
-              onClick={() => setActiveTab("view")}
-              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
-                activeTab === "view" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              View All Orders
-            </button>
-            <button
-              onClick={() => setActiveTab("names")}
-              className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 ${
-                activeTab === "names" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              View All Names
-            </button>
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg p-1 shadow-md w-full max-w-2xl">
+            <div className="grid grid-cols-3 gap-1">
+              <button
+                onClick={() => setActiveTab("add")}
+                className={`px-3 sm:px-6 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                  activeTab === "add" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Add Order</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("view")}
+                className={`px-3 sm:px-6 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                  activeTab === "view" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <Package className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">View All Orders</span>
+                <span className="sm:hidden">View</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("names")}
+                className={`px-3 sm:px-6 py-2 rounded-md font-medium transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                  activeTab === "names" ? "bg-blue-600 text-white" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">View All Names</span>
+                <span className="sm:hidden">Names</span>
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Global Messages */}
-        {formMessage && (
-          <div
-            className={`mb-6 p-3 rounded-md ${
-              formMessage.type === "success" ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-            }`}
-          >
-            <p className={`text-sm font-medium ${formMessage.type === "success" ? "text-green-800" : "text-red-800"}`}>
-              {formMessage.text}
-            </p>
-          </div>
-        )}
 
         {/* Add Order Tab */}
         {activeTab === "add" && (
           <div className="max-w-2xl mx-auto">
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle className="text-2xl font-bold">Add New Order</CardTitle>
+                <CardTitle className="text-xl sm:text-2xl font-bold">Add New Order</CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="grid gap-4">
-                  <div>
-                    <Label htmlFor="trackingNumber">Tracking Number *</Label>
-                    <Input
-                      id="trackingNumber"
-                      name="trackingNumber"
-                      required
-                      placeholder="e.g., TRK123456"
-                      maxLength={50}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="status">Status *</Label>
-                    <select
-                      id="status"
-                      name="status"
-                      required
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="">Select Status</option>
-                      {ORDER_STATUSES.map((status) => (
-                        <option key={status.value} value={status.value}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label htmlFor="sender">Sender</Label>
-                    <Input id="sender" name="sender" placeholder="e.g., Acme Corp" maxLength={100} />
-                  </div>
-                  <div>
-                    <Label htmlFor="receiver">Receiver</Label>
-                    <Input id="receiver" name="receiver" placeholder="e.g., John Doe" maxLength={100} />
-                  </div>
-                  <div>
-                    <Label htmlFor="origin">Origin</Label>
-                    <Input id="origin" name="origin" placeholder="e.g., New York, USA" maxLength={100} />
-                  </div>
-                  <div>
-                    <Label htmlFor="destination">Destination</Label>
-                    <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" maxLength={100} />
-                  </div>
-                  <div>
-                    <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
-                    <Input
-                      id="estimatedDelivery"
-                      name="estimatedDelivery"
-                      type="date"
-                      min={new Date().toISOString().split("T")[0]}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="details">Details</Label>
-                    <Textarea
-                      id="details"
-                      name="details"
-                      rows={3}
-                      placeholder="Additional order details..."
-                      maxLength={500}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="trackingNumber">Tracking Number *</Label>
+                      <Input
+                        id="trackingNumber"
+                        name="trackingNumber"
+                        required
+                        placeholder="e.g., TRK123456"
+                        maxLength={50}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="status">Status *</Label>
+                      <select
+                        id="status"
+                        name="status"
+                        required
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">Select Status</option>
+                        {ORDER_STATUSES.map((status) => (
+                          <option key={status.value} value={status.value}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="sender">Sender</Label>
+                      <Input id="sender" name="sender" placeholder="e.g., Acme Corp" maxLength={100} />
+                    </div>
+                    <div>
+                      <Label htmlFor="receiver">Receiver</Label>
+                      <Input id="receiver" name="receiver" placeholder="e.g., John Doe" maxLength={100} />
+                    </div>
+                    <div>
+                      <Label htmlFor="origin">Origin</Label>
+                      <Input id="origin" name="origin" placeholder="e.g., New York, USA" maxLength={100} />
+                    </div>
+                    <div>
+                      <Label htmlFor="destination">Destination</Label>
+                      <Input id="destination" name="destination" placeholder="e.g., Los Angeles, USA" maxLength={100} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
+                      <Input
+                        id="estimatedDelivery"
+                        name="estimatedDelivery"
+                        type="date"
+                        min={new Date().toISOString().split("T")[0]}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="details">Details</Label>
+                      <Textarea
+                        id="details"
+                        name="details"
+                        rows={3}
+                        placeholder="Additional order details..."
+                        maxLength={500}
+                      />
+                    </div>
                   </div>
                   <Button
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400 w-full"
                     disabled={isAdding}
                   >
                     {isAdding ? "Adding..." : "Add Order"}
@@ -482,7 +599,7 @@ export default function OrderManagementPage() {
         {activeTab === "view" && (
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl font-bold">
+              <CardTitle className="text-xl sm:text-2xl font-bold">
                 All Orders
                 {!isLoadingOrders && orders.length > 0 && (
                   <span className="text-sm font-normal text-gray-500 ml-2">
@@ -503,32 +620,38 @@ export default function OrderManagementPage() {
                   <p className="text-sm">Add your first order using the Add Order tab!</p>
                 </div>
               ) : (
-                <div className="grid gap-4 max-h-96 overflow-y-auto">
+                <div className="grid gap-4 max-h-[70vh] overflow-y-auto">
                   {orders.map((order) => (
                     <Card key={order.tracking_number} className="p-4 border hover:shadow-md transition-shadow">
                       {editingOrder === order.tracking_number ? (
                         // Edit Mode
                         <div className="space-y-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                             <h3 className="font-semibold text-lg text-blue-600">Editing: {order.tracking_number}</h3>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto">
                               <Button
                                 size="sm"
                                 onClick={() => handleUpdateOrder(order.tracking_number)}
                                 disabled={isUpdating}
-                                className="bg-green-600 hover:bg-green-700"
+                                className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
                               >
                                 <Save className="w-4 h-4 mr-1" />
                                 {isUpdating ? "Saving..." : "Save"}
                               </Button>
-                              <Button size="sm" variant="outline" onClick={handleCancelEdit} disabled={isUpdating}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleCancelEdit}
+                                disabled={isUpdating}
+                                className="flex-1 sm:flex-none bg-transparent"
+                              >
                                 <X className="w-4 h-4 mr-1" />
                                 Cancel
                               </Button>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <Label>Status</Label>
                               <select
@@ -594,13 +717,15 @@ export default function OrderManagementPage() {
                       ) : (
                         // View Mode
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold text-lg text-blue-600">Tracking: {order.tracking_number}</h3>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+                            <h3 className="font-semibold text-lg text-blue-600 break-all">
+                              Tracking: {order.tracking_number}
+                            </h3>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleEditOrder(order)}
-                              className="flex items-center gap-1"
+                              className="flex items-center gap-1 w-full sm:w-auto"
                             >
                               <Edit className="w-4 h-4" />
                               Edit
@@ -616,23 +741,25 @@ export default function OrderManagementPage() {
                             </span>
                           </p>
 
-                          {order.sender && order.origin && (
-                            <p className="text-sm">
-                              <strong>From:</strong> {order.sender} ({order.origin})
-                            </p>
-                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                            {order.sender && order.origin && (
+                              <p>
+                                <strong>From:</strong> {order.sender} ({order.origin})
+                              </p>
+                            )}
 
-                          {order.receiver && order.destination && (
-                            <p className="text-sm">
-                              <strong>To:</strong> {order.receiver} ({order.destination})
-                            </p>
-                          )}
+                            {order.receiver && order.destination && (
+                              <p>
+                                <strong>To:</strong> {order.receiver} ({order.destination})
+                              </p>
+                            )}
 
-                          {order.estimated_delivery && (
-                            <p className="text-sm">
-                              <strong>Est. Delivery:</strong> {order.estimated_delivery}
-                            </p>
-                          )}
+                            {order.estimated_delivery && (
+                              <p>
+                                <strong>Est. Delivery:</strong> {order.estimated_delivery}
+                              </p>
+                            )}
+                          </div>
 
                           {order.details && (
                             <p className="text-sm text-gray-600 mt-2">
@@ -657,10 +784,10 @@ export default function OrderManagementPage() {
 
         {/* View All Names Tab */}
         {activeTab === "names" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle className="text-2xl font-bold text-green-600">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-green-600">
                   All Senders ({uniqueNames.senders.length})
                 </CardTitle>
               </CardHeader>
@@ -668,10 +795,10 @@ export default function OrderManagementPage() {
                 {uniqueNames.senders.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">No senders found</p>
                 ) : (
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-64 sm:max-h-80 overflow-y-auto">
                     <ul className="space-y-2">
                       {uniqueNames.senders.map((sender, index) => (
-                        <li key={index} className="p-2 bg-gray-50 rounded border">
+                        <li key={index} className="p-3 bg-gray-50 rounded border text-sm sm:text-base break-words">
                           {sender}
                         </li>
                       ))}
@@ -683,7 +810,7 @@ export default function OrderManagementPage() {
 
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle className="text-2xl font-bold text-blue-600">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-blue-600">
                   All Receivers ({uniqueNames.receivers.length})
                 </CardTitle>
               </CardHeader>
@@ -691,10 +818,10 @@ export default function OrderManagementPage() {
                 {uniqueNames.receivers.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">No receivers found</p>
                 ) : (
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-64 sm:max-h-80 overflow-y-auto">
                     <ul className="space-y-2">
                       {uniqueNames.receivers.map((receiver, index) => (
-                        <li key={index} className="p-2 bg-gray-50 rounded border">
+                        <li key={index} className="p-3 bg-gray-50 rounded border text-sm sm:text-base break-words">
                           {receiver}
                         </li>
                       ))}
