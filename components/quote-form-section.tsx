@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,6 +11,33 @@ import { useState } from "react"
 
 export function QuoteFormSection() {
   const [filterValue, setFilterValue] = useState([20])
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get("name") as string
+    const email = formData.get("email") as string
+
+    const emailTo = "info@skyshipsplash.com"
+    const subject = "Free Quote Request - Sky Ship Splash"
+    const body = `Hello,%0D%0A%0D%0AI would like to request a free quote for shipping services.%0D%0A%0D%0AName: ${encodeURIComponent(name || "Not provided")}%0D%0AEmail: ${encodeURIComponent(email || "Not provided")}%0D%0AFilter Value: $${filterValue[0]} Tn%0D%0A%0D%0APlease provide me with a detailed quote for your services.%0D%0A%0D%0AThank you for your time.%0D%0A%0D%0ABest regards`
+
+    const mailtoLink = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${body}`
+
+    try {
+      window.open(mailtoLink, "_self")
+    } catch (error) {
+      navigator.clipboard
+        .writeText(emailTo)
+        .then(() => {
+          alert(`Please send an email to: ${emailTo}\n\nEmail address copied to clipboard!`)
+        })
+        .catch(() => {
+          alert(`Please send an email to: ${emailTo}`)
+        })
+    }
+  }
 
   return (
     <section id="contact" className="py-16 md:py-24 bg-gray-50">
@@ -56,13 +85,13 @@ export function QuoteFormSection() {
         <div className="bg-white p-8 rounded-lg shadow-lg">
           <h3 className="text-2xl md:text-3xl font-bold text-gray-800 mb-4">We Are here</h3>
           <p className="text-lg text-gray-600 mb-6">Get A Free Quote</p>
-          <form className="grid gap-6">
+          <form className="grid gap-6" onSubmit={handleSubmit}>
             <div>
               <Label htmlFor="name" className="sr-only">
                 Enter your name
               </Label>
               <div className="relative">
-                <Input id="name" type="text" placeholder="Enter your name" className="pl-10 py-6" />
+                <Input id="name" name="name" type="text" placeholder="Enter your name" className="pl-10 py-6" />
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
             </div>
@@ -71,7 +100,7 @@ export function QuoteFormSection() {
                 Enter your email
               </Label>
               <div className="relative">
-                <Input id="email" type="email" placeholder="Enter your email" className="pl-10 py-6" />
+                <Input id="email" name="email" type="email" placeholder="Enter your email" className="pl-10 py-6" />
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
             </div>
