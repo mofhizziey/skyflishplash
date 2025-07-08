@@ -49,8 +49,8 @@ export function SiteFooter() {
           <h3 className="text-lg font-semibold text-white mb-2">Contact & Hours</h3>
           <div className="flex items-center gap-2 text-sm">
             <Mail className="h-4 w-4" />
-            <Link href="mailto:info@skyshipsplash.com" className="hover:text-white">
-              info@skyshipsplash.com
+            <Link href="mailto:info@skyflipsplash.com" className="hover:text-white">
+              info@skyflipsplash.com
             </Link>
           </div>
           <div className="flex items-center gap-2 text-sm">

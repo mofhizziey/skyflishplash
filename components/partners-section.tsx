@@ -92,10 +92,10 @@ export function PartnersSection() {
   }
 
   const handleContactPartnership = () => {
-    const email = "info@skyshipsplash.com"
+    const email = "info@skyflipsplash.com"
     const subject = "Partnership Inquiry - Sky Ship Splash"
     const body =
-      "Hello,%0D%0A%0D%0AI am interested in becoming a partner with Sky Ship Splash. Please provide more information about partnership opportunities.%0D%0A%0D%0AThank you for your time.%0D%0A%0D%0ABest regards"
+      ""
 
     const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${body}`
 
