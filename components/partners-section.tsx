@@ -91,6 +91,30 @@ export function PartnersSection() {
     setCurrentSlide((prev) => (prev - 1 + testimonials.length) % testimonials.length)
   }
 
+  const handleContactPartnership = () => {
+    const email = "info@skyshipsplash.com"
+    const subject = "Partnership Inquiry - Sky Ship Splash"
+    const body =
+      "Hello,%0D%0A%0D%0AI am interested in becoming a partner with Sky Ship Splash. Please provide more information about partnership opportunities.%0D%0A%0D%0AThank you for your time.%0D%0A%0D%0ABest regards"
+
+    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${body}`
+
+    // Try to open email client
+    try {
+      window.open(mailtoLink, "_self")
+    } catch (error) {
+      // Fallback: copy email to clipboard and show alert
+      navigator.clipboard
+        .writeText(email)
+        .then(() => {
+          alert(`Please send an email to: ${email}\n\nEmail address copied to clipboard!`)
+        })
+        .catch(() => {
+          alert(`Please send an email to: ${email}`)
+        })
+    }
+  }
+
   return (
     <section className="py-12 md:py-20 bg-gradient-to-br from-gray-50 to-blue-50">
       <div className="container px-4 md:px-6">
@@ -170,12 +194,10 @@ export function PartnersSection() {
         {/* Partner Testimonials Carousel */}
         <div className="bg-white rounded-2xl shadow-lg p-8 md:p-12 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
-
           <div className="text-center mb-8">
             <h3 className="text-2xl font-bold text-gray-800 mb-2">What Our Partners Say</h3>
             <p className="text-gray-600">Hear from industry leaders about their experience working with us</p>
           </div>
-
           <div className="relative">
             <div
               className="flex transition-transform duration-500 ease-in-out"
@@ -198,7 +220,6 @@ export function PartnersSection() {
                 </div>
               ))}
             </div>
-
             {/* Navigation Buttons */}
             <button
               onClick={prevSlide}
@@ -216,7 +237,6 @@ export function PartnersSection() {
             >
               <ChevronRight className="h-6 w-6 text-gray-600" />
             </button>
-
             {/* Dots Indicator */}
             <div className="flex justify-center mt-8 space-x-2">
               {testimonials.map((_, index) => (
@@ -239,12 +259,14 @@ export function PartnersSection() {
             Join our network of trusted partners and expand your global reach with our comprehensive logistics
             solutions.
           </p>
-          <button className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg">
+          <button
+            onClick={handleContactPartnership}
+            className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg"
+          >
             Contact Partnership Team
           </button>
         </div>
       </div>
-
       <style jsx>{`
         @keyframes fadeInUp {
           from {

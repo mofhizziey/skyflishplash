@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Facebook, Twitter, Dribbble } from "lucide-react"
+import { Facebook, Twitter, Dribbble, Mail, Phone } from "lucide-react"
 import Image from "next/image"
 
 export function SiteFooter() {
@@ -46,10 +46,24 @@ export function SiteFooter() {
           </Link>
         </div>
         <div className="grid gap-2">
-          <h3 className="text-lg font-semibold text-white mb-2">Working Hours</h3>
-          <p className="text-sm">Monday - Friday: 7:00 - 17:00</p>
-          <p className="text-sm">Saturday: 7:00 - 12:00</p>
-          <p className="text-sm">Holidays: 8:00 - 10:00</p>
+          <h3 className="text-lg font-semibold text-white mb-2">Contact & Hours</h3>
+          <div className="flex items-center gap-2 text-sm">
+            <Mail className="h-4 w-4" />
+            <Link href="mailto:info@skyshipsplash.com" className="hover:text-white">
+              info@skyshipsplash.com
+            </Link>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Phone className="h-4 w-4" />
+            <Link href="tel:+1-444-xxx" className="hover:text-white">
+              +1-444-XXX-XXX
+            </Link>
+          </div>
+          <div className="mt-4 space-y-1">
+            <p className="text-sm">Monday - Friday: 7:00 - 17:00</p>
+            <p className="text-sm">Saturday: 7:00 - 12:00</p>
+            <p className="text-sm">Holidays: 8:00 - 10:00</p>
+          </div>
           <p className="text-sm mt-4">
             For more than 30 years, Sky Flip Splash has been a reliable partner in the field of logistics.
           </p>
