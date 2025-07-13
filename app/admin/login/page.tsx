@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { Eye, EyeOff, Lock, Mail } from "lucide-react"
+import Link from "next/link"
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
@@ -33,22 +33,37 @@ export default function AdminLoginPage() {
     setIsLoading(true)
     setError("")
 
-    // Get admin credentials from environment variables
-    const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || "info@skyshipsplash.com"
-    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "Skyshipsplash10#"
+    // Get admin credentials - check localStorage first (for updated passwords), then fall back to env
+    const adminEmail = localStorage.getItem("adminEmail") || "info@skyshipsplash.com"
+    const adminPassword = localStorage.getItem("adminPassword") || "Skyshipsplash10#"
+
+    console.log("Login attempt:")
+    console.log("Entered email:", email)
+    console.log("Expected email:", adminEmail)
+    console.log("Entered password:", password)
+    console.log("Expected password:", adminPassword)
+    console.log("Password from localStorage:", localStorage.getItem("adminPassword"))
 
     // Simulate a small delay for better UX
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     if (email === adminEmail && password === adminPassword) {
+      console.log("✅ Login successful!")
+
       // Set admin authentication in localStorage
       localStorage.setItem("isAdminLoggedIn", "true")
       localStorage.setItem("adminEmail", email)
       localStorage.setItem("adminLoginTime", new Date().toISOString())
 
+      // Make sure the current password is stored for future resets
+      if (!localStorage.getItem("adminPassword")) {
+        localStorage.setItem("adminPassword", adminPassword)
+      }
+
       // Redirect to order management page
       router.push("/order-management")
     } else {
+      console.log("❌ Login failed - credentials don't match")
       setError("Invalid email or password. Please try again.")
     }
 
@@ -78,13 +93,12 @@ export default function AdminLoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter admin email"
+                    placeholder="info@skyshipsplash.com"
                     className="pl-10"
                     required
                   />
                 </div>
               </div>
-
               <div>
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
@@ -107,20 +121,28 @@ export default function AdminLoginPage() {
                   </button>
                 </div>
               </div>
-
               {error && (
                 <div className="p-3 rounded-md bg-red-50 border border-red-200">
                   <p className="text-sm font-medium text-red-800">{error}</p>
                 </div>
               )}
-
               <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
 
+            <div className="mt-4 text-center">
+              <Link href="/admin/reset-password" className="text-sm text-blue-600 hover:text-blue-800 underline">
+                Reset Password
+              </Link>
+            </div>
+
             <div className="mt-6 text-center">
-              <p className="text-xs text-gray-500">This is a secure admin area. Unauthorized access is prohibited.</p>
+              <p className="text-xs text-gray-500">
+                Default: info@skyshipsplash.com / Skyshipsplash10#
+                <br />
+                Check console for debug info
+              </p>
             </div>
           </CardContent>
         </Card>
